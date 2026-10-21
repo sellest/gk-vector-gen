@@ -1,0 +1,18 @@
+{
+  "name": "201-107",
+  "canvas_mm": [1139.1053333333334, 897.8053333333334],
+  "dpi": 150,
+  "document_page_mm": [410, 680],
+  "panel_dimensions_mm": null,
+  "background": "#e6e6e6",
+  "compression": "tiff_lzw",
+  "color_mode": "RGB",
+  "icc_profile": null,
+  "trace_max_dimension": 1800,
+  "color_precision": 6,
+  "gradient_step": 12,
+  "filter_speckle": 4,
+  "preserve_white_details": true,
+  "cdr_version": 16,
+  "notes": "Canvas derived from example TIFF pixels at 150 DPI. Page size is separate. Panel measurements, seam allowance and bleed have not been established."
+}

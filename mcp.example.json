@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "gk-vector": {
+      "command": "<PYTHON_EXECUTABLE>",
+      "args": ["<PROJECT_ROOT>/run.py", "serve"],
+      "env": {"GK_VECTOR_ROOT": "<PROJECT_ROOT>"}
+    }
+  }
+}

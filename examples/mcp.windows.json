@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "gk-vector": {
+      "command": "C:/Apps/gk-vector-mcp/.venv/Scripts/python.exe",
+      "args": ["C:/Apps/gk-vector-mcp/run.py", "serve"],
+      "env": {"GK_VECTOR_ROOT": "C:/Apps/gk-vector-mcp"}
+    }
+  }
+}
