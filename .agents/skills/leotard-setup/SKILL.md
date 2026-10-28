@@ -1,6 +1,6 @@
 ---
 name: leotard-setup
-description: Perform initial installation and configuration of the leotard panel app, or adjust its output folder, filename templates, SVG properties and export defaults at any time. Run before the first artwork job when local configuration is missing.
+description: Set up or update the local gk-vector tool, adjust output folders, filenames, SVG and export defaults, or refresh its Pantonic palette. Use for requests such as "please update gk-vector tool" and before the first artwork job when configuration is missing.
 ---
 
 # Leotard app setup and adjustments
@@ -11,6 +11,28 @@ Work from the project root containing `run.py` and `pyproject.toml`.
 On Windows use `.venv/Scripts/python.exe`; on macOS use `.venv/bin/python`.
 The shell examples below are for Windows. For macOS installation and both hosts'
 MCP connections, read [the cross-platform setup guide](../../../docs/mcp-setup.md).
+
+## Update the tool
+
+When the user says "please update gk-vector tool", call MCP `update_gk_vector`.
+The equivalent CLI is `run.py update`, using the local environment's Python.
+This pulls `origin/main` with `--ff-only` and returns restart instructions.
+On restart, startup installs the lock file and project into the current environment
+and checks dependencies before importing native image libraries.
+It does not choose releases, stage installations, reset files, or restart itself.
+
+After success, tell the client to restart the app or reconnect its MCP server.
+For a Secure MCP Tunnel, stop and start the tunnel client so it relaunches the
+server; for Claude Desktop, fully quit and reopen the app. Do not continue artwork
+operations in the old server process. Refuse to report an installed update as
+active before that restart. The first reconnect can take longer while dependencies install.
+
+If blocked by local tracked changes, a different branch/remote, or a diverged
+history, report the reason. Do not stash, discard changes, or force reset. Local
+settings and artwork stay in place. If startup installation fails, it remains
+pending and is retried at the next startup. Read host/tunnel logs to resolve the
+cause, then restart. Do not claim rollback or success. Tool updates are separate from
+`update_pantonic`, which refreshes only the color catalog.
 
 ## Check installation and saved preferences
 
@@ -46,6 +68,8 @@ present these defaults and collect the user's preferences in a concise question:
   solid background, geometricPrecision rendering.
 - Export defaults: the example-derived profile, including 150 DPI. Keep settings
   the user has not asked to change. Measurements apply to the export canvas.
+- Palette: `palettes/pantonic.json`. New jobs capture their own catalog snapshot;
+  match the printed RGB labels as sRGB, not sampled Adobe RGB patch pixels.
 
 Ask only about choices that remain unresolved. Continue installation/read-only
 checks while waiting. If the user requests default setup, apply defaults directly.
@@ -97,3 +121,18 @@ If dependencies changed, run the test suite. For preference-only adjustments,
 validation and read-back are sufficient unless a custom SVG mode needs a trial.
 Native CDR still requires CorelDRAW; setup must not report it ready just because
 Python dependencies are installed.
+
+## Palette refresh
+
+Normal export uses the shipped catalog and does not require OCR. When the user
+updates the chart, invoke MCP `update_pantonic` or `run.py update-palette`.
+Install `.[palette-update]` if the optional OCR engine is missing. The first
+refresh downloads a checksum-pinned English model into the ignored local cache;
+later refreshes can run offline. See [palette updates and corrections](../../../docs/palette.md).
+
+Read `pantonic_status` after updating. If OCR leaves unresolved RGB readings,
+the active catalog remains unchanged: inspect the review file and supply
+source-checksum-bound corrections. Do not invent values or edit the active
+catalog manually. `palette_file` can be changed with a setup patch; it must point
+to a validated catalog, not the source TIFF. Existing revisions retain their
+snapshot when this preference or the active palette changes.

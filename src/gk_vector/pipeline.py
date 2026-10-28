@@ -10,11 +10,12 @@ import xml.etree.ElementTree as ET
 
 import cv2
 import numpy as np
-from PIL import Image, ImageChops, ImageDraw, ImageOps, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageOps, ImageStat, ImageCms
 import resvg_py
 import vtracer
 
 from .config import validate_svg
+from .palette import DEFAULT_PALETTE, load_palette, Matcher, write_color_report, build_color_review
 
 SVG = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG)
@@ -73,21 +74,33 @@ def load_job(folder: str | Path) -> tuple[Path, dict]:
 
 
 def verify_sources(folder: Path, job: dict) -> None:
+    if job.get('settings_sha256') and hashlib.sha256(json.dumps(job['settings'],sort_keys=True).encode()).hexdigest()!=job['settings_sha256']:
+        raise ValueError('Settings changed. Prepare a new reconstruction revision.')
     for filename, expected in job["source_hashes"].items():
         if digest(folder / filename) != expected:
             raise ValueError(f"Source changed: {filename}. Prepare a new reconstruction revision.")
+    if job.get('color_review') and json.loads((folder/'color-selection.json').read_text(encoding='utf-8'))!=job['color_review']:
+        raise ValueError('Color selection changed. Prepare a new reconstruction revision.')
 
 
 def prepare(image: str | Path, folder: str | Path, profile: dict,
             overrides: dict | None = None, masks: str | Path | None = None,
-            identity: dict | None = None) -> dict:
+            identity: dict | None = None, palette_file: str | Path = DEFAULT_PALETTE) -> dict:
     """Save an immutable draft input and two explicit panel masks.
 
     Automatic segmentation assumes two disconnected panels on a light neutral
     background. A supplied grayscale mask bypasses segmentation. White=artwork.
     """
     settings = resolve_settings(profile, overrides)
-    source = ImageOps.exif_transpose(Image.open(image)).convert("RGBA")
+    palette = load_palette(palette_file)
+    opened = ImageOps.exif_transpose(Image.open(image))
+    alpha = opened.convert("RGBA").getchannel("A")
+    managed = opened.convert("RGB")
+    if opened.info.get("icc_profile"):
+        managed = ImageCms.profileToProfile(managed, ImageCms.ImageCmsProfile(io.BytesIO(opened.info["icc_profile"])),
+                                           ImageCms.createProfile("sRGB"), outputMode="RGB")
+    source = managed.convert("RGBA")
+    source.putalpha(alpha)
     rgb = Image.new("RGB", source.size, settings["background"])
     rgb.paste(source, mask=source.getchannel("A"))
     array = np.array(rgb)
@@ -142,10 +155,17 @@ def prepare(image: str | Path, folder: str | Path, profile: dict,
     clean.paste(rgb, mask=mask)
     clean.save(folder / "clean.png")
     outline.save(folder / "mask-review.png")
-    inputs = ["source.png", "clean.png", "front-mask.png", "back-mask.png"]
+    write_json(folder / "palette.json", palette)
+    color_review = build_color_review(folder, clean,
+        {name:Image.open(folder / f'{name}-mask.png').convert('L') for name in ('front','back')},settings,palette)
+    inputs = ["source.png", "clean.png", "front-mask.png", "back-mask.png", "mask-review.png", "palette.json"]
+    inputs.extend(color_review['files'].values())
     job = {"schema_version": 1, "status": "draft", "settings": settings,
+           "settings_sha256":hashlib.sha256(json.dumps(settings,sort_keys=True).encode()).hexdigest(),
            "source_size": list(rgb.size), "panels": panels,
            "source_hashes": {name: digest(folder / name) for name in inputs},
+           "palette": {"version":palette["version"], "source_sha256":palette["source_sha256"], "snapshot":"palette.json"},
+           "color_review":color_review,
            "approval": None,
            "notes": "Left panel=front, right=back. Masks are artwork silhouettes, not validated sewing patterns."}
     if identity:
@@ -154,13 +174,19 @@ def prepare(image: str | Path, folder: str | Path, profile: dict,
     return job
 
 
-def approve(folder: str | Path, note: str) -> dict:
+def approve(folder: str | Path, note: str, colors_approved: bool = False) -> dict:
     if not note.strip():
         raise ValueError("Record the client's approval message")
     folder, job = load_job(folder)
     verify_sources(folder, job)
+    if not job.get('color_review'):
+        raise ValueError('Job predates color selection review. Prepare a new revision.')
+    if not colors_approved:
+        raise ValueError('Approval must include the proposed color selection. Review colors-review.html, then explicitly approve colors.')
     job["status"] = "approved"
-    job["approval"] = {"note": note, "source_hashes": job["source_hashes"]}
+    job["approval"] = {"note": note, "source_hashes": job["source_hashes"],
+                       "scope":['artwork','panel_masks','color_selection'],
+                       "color_selection_sha256":digest(folder/'color-selection.json')}
     write_json(folder / "job.json", job)
     return job
 
@@ -168,8 +194,12 @@ def approve(folder: str | Path, note: str) -> dict:
 def vectorize(folder: str | Path, candidate: bool = False) -> dict:
     folder, job = load_job(folder)
     verify_sources(folder, job)
+    if not job.get('color_review'):
+        raise ValueError('Job predates color selection review. Prepare a new revision.')
     if not candidate and not job["approval"]:
         raise ValueError("Client approval is required. Use candidate=True only for draft conversion tests.")
+    if not candidate and 'color_selection' not in job['approval'].get('scope',[]):
+        raise ValueError('Color selection approval is required before production conversion.')
     destination = folder / ("candidate" if candidate else "production")
     if destination.exists():
         raise ValueError("Conversion output already exists; use a new job revision")
@@ -184,12 +214,23 @@ def vectorize(folder: str | Path, candidate: bool = False) -> dict:
 
 def _convert(folder: Path, job: dict, destination: Path, candidate: bool) -> dict:
     settings = job["settings"]
+    if not job.get("palette"):
+        raise ValueError("Job predates palette support. Prepare a new revision to snapshot its palette.")
+    catalog = load_palette(folder / "palette.json")
+    selection=json.loads((folder/'color-selection.json').read_text(encoding='utf-8'))
+    if selection['palette_version']!=catalog['version']:
+        raise ValueError('Color selection and palette versions do not match')
+    selected_ids={color['id'] for color in selection['colors']}
+    selected_entries=[entry for entry in catalog['entries'] if entry['id'] in selected_ids]
+    if not selected_ids or len(selected_entries)!=len(selected_ids):
+        raise ValueError('Invalid color selection')
+    matcher = Matcher({**catalog,'entries':selected_entries})
     svg_options = validate_svg(settings.get("svg", {}))
     precision = svg_options["precision"]
-    names = job.get("identity", {}).get("export_names", {"svg":"panels.svg", "tif":"panels.tif", "cdr":"panels.cdr"})
+    names = dict(job.get("identity", {}).get("export_names", {"svg":"panels.svg", "tif":"panels.tif", "cdr":"panels.cdr"}))
+    names.setdefault("colors", Path(names["svg"]).stem + "_colors.txt")
     clean = Image.open(folder / "clean.png").convert("RGB")
-    trace = clean.copy()
-    trace.thumbnail((settings["trace_max_dimension"], settings["trace_max_dimension"]), Image.Resampling.LANCZOS)
+    trace = Image.open(folder/'palette-matched.png').convert('RGB')
     trace.save(destination / "trace-input.png")
     vtracer.convert_image_to_svg_py(
         str(destination / "trace-input.png"), str(destination / "trace.svg"),
@@ -242,17 +283,22 @@ def _convert(folder: Path, job: dict, destination: Path, candidate: bool) -> dic
             points = [f"{p[0][0]*contour_scale[0]:.{precision}f},{p[0][1]*contour_scale[1]:.{precision}f}" for p in contour]
             commands.append("M" + " L".join(points) + " Z")
         white_contour_count = len(commands)
-        ET.SubElement(clipped, f"{{{SVG}}}path", {"id":"preserved-white-details", "d":" ".join(commands),
-                                                  "fill":"#ffffff", "fill-rule":"evenodd"})
+        if commands:
+            ET.SubElement(clipped, f"{{{SVG}}}path", {"id":"preserved-white-details", "d":" ".join(commands),
+                                                      "fill":"#ffffff", "fill-rule":"evenodd"})
+    used_colors = matcher.constrain_svg(root)
+    write_color_report(destination / names["colors"], catalog, used_colors, names["svg"])
     svg_path = destination / names["svg"]
     ET.ElementTree(root).write(svg_path, encoding="utf-8", xml_declaration=True)
     # Rasterize the vectors themselves, rather than upscaling the input raster.
     svg_text = svg_path.read_text(encoding="utf-8")
     rgba = Image.open(io.BytesIO(resvg_py.svg_to_bytes(svg_string=svg_text, width=w, height=h,
                                                       dpi=settings["dpi"]))).convert("RGBA")
-    rendered = Image.new("RGB", rgba.size, settings["background"])
+    palette_background, _ = matcher.color(settings["background"])
+    rendered = Image.new("RGB", rgba.size, palette_background)
     rendered.paste(rgba, mask=rgba.getchannel("A"))
-    rendered.save(destination / names["tif"], compression="tiff_lzw", dpi=(settings["dpi"], settings["dpi"]))
+    rendered.save(destination / names["tif"], compression="tiff_lzw", dpi=(settings["dpi"], settings["dpi"]),
+                  icc_profile=ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
     preview = rendered.copy()
     preview.thumbnail((1500, 1500))
     preview.save(destination / "vector-preview.png")
@@ -276,8 +322,12 @@ def _convert(folder: Path, job: dict, destination: Path, candidate: bool) -> dic
               "embedded_rasters": len(root.findall(f".//{{{SVG}}}image")),
               "review_mae_rgb_0_255": round(mae, 4), "review_required": True,
               "preserved_white_contours": white_contour_count,
+              "palette": {"version":catalog["version"],"source_sha256":catalog["source_sha256"],
+                          "colors_used":len(used_colors),"matching":"CIELAB Delta E 76",
+                          "selected_colors":len(selected_entries),"selection_sha256":digest(folder/'color-selection.json'),
+                          "name_review_count":catalog.get("name_review_count",0)},
               "cdr": {"status": "not_exported", "reason": "Run export-cdr on a Windows machine with CorelDRAW installed."},
               "artifacts": names,
-              "files": [names["svg"], names["tif"], "vector-preview.png", "comparison.jpg", "difference-x5.png"]}
+              "files": [names["svg"], names["tif"], names["colors"], "vector-preview.png", "comparison.jpg", "difference-x5.png"]}
     write_json(destination / "report.json", result)
     return result

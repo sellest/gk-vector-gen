@@ -4,18 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gk-vector-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reviewed panel artwork to SVG, TIFF and native CorelDRAW"
 requires-python = ">=3.10"
 dependencies = [
-  "Pillow>=11,<13", "numpy>=2,<3", "opencv-python-headless>=4.10,<6",
+  "Pillow>=11,<13", "numpy>=2,<3", "opencv-python>=4.10,<6",
   "vtracer==0.6.12", "resvg-py==0.5.0", "mcp>=1.20,<2",
   "pywin32>=308; sys_platform == 'win32'",
 ]
 
+[project.optional-dependencies]
+palette-update = ["rapidocr-onnxruntime==1.4.4", "onnxruntime==1.23.2"]
+
 [project.scripts]
-gk-panels = "gk_vector.cli:main"
-gk-vector-mcp = "gk_vector.server:main"
+gk-panels = "gk_vector.update:cli"
+gk-vector-mcp = "gk_vector.update:serve"
 
 [tool.setuptools.packages.find]
 where = ["src"]

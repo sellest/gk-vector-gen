@@ -14,6 +14,7 @@ DEFAULTS = {
     "job_template": "{design}/{revision}",
     "filename_template": "{design}_{revision}.{ext}",
     "profile": "profiles/201-107.json",
+    "palette_file": "palettes/pantonic.json",
     "overrides": {},
     "svg": {"units": "mm", "version": "1.1", "precision": 3,
             "trace_mode": "spline", "background": "solid",
@@ -85,7 +86,7 @@ def validate_config(config: dict) -> dict:
     value = merge(DEFAULTS, config)
     if value["schema_version"] != 1:
         raise ValueError("Unsupported configuration schema")
-    for key in ("output_folder", "profile"):
+    for key in ("output_folder", "profile", "palette_file"):
         if not isinstance(value[key], str) or not value[key].strip():
             raise ValueError(f"{key} must be a nonempty path")
     value["svg"] = validate_svg(value["svg"])
@@ -104,7 +105,9 @@ def configure(root: str | Path, patch: dict | None = None) -> dict:
     value = validate_config(merge(current, patch or {}))
     profile = (root / value["profile"]).resolve()
     from .pipeline import resolve_settings
+    from .palette import load_palette
     resolve_settings(json.loads(profile.read_text(encoding="utf-8")), {**value["overrides"], "svg": value["svg"]})
+    load_palette(root / value["palette_file"])
     # Atomic replacement avoids a partially written settings file.
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -121,8 +124,10 @@ def describe(root: str | Path, config: dict) -> dict:
 
 
 def export_names(config: dict, design: str, revision: str) -> dict:
-    return {ext: render_template(config["filename_template"], design=design, revision=revision, ext=ext, filename=True)
-            for ext in ("svg", "tif", "cdr")}
+    names = {ext: render_template(config["filename_template"], design=design, revision=revision, ext=ext, filename=True)
+             for ext in ("svg", "tif", "cdr")}
+    names["colors"] = Path(names["svg"]).stem + "_colors.txt"
+    return names
 
 
 def job_path(root: str | Path, config: dict, design: str, revision: str) -> Path:

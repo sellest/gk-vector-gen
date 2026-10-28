@@ -1,0 +1,19 @@
+{
+  "source_sha256": "4e1ef49c392bba10f7cd5ab04a59bfdada2e12b075ddc66f2f947c5e49b1c307",
+  "entries": {
+    "r11c13": {"name": "Smoked Pearl"},
+    "r14c44": {"name": "Peach Pearl"},
+    "r18c41": {"name": "Camellia"},
+    "r19c16": {"name": "Tannin"},
+    "r20c05": {"name": "Seedpearl"},
+    "r23c22": {"name": "Bellflower"},
+    "r25c10": {"name": "Pearl"},
+    "r36c27": {"name": "Capri"},
+    "r36c34": {"name": "Baltic"},
+    "r39c18": {"name": "Illusion Blue"},
+    "r45c33": {"name": "Myrtle"},
+    "r46c48": {"name": "Elm"},
+    "r48c17": {"name": "Mole"},
+    "r48c19": {"name": "Mother of Pearl"}
+  }
+}

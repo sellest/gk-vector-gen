@@ -103,7 +103,7 @@ The tunnel supplies transport, not the app's image generation or filesystem code
 
 ## 4. Use the workflow
 
-Connecting MCP exposes seven backend tools; it does not automatically install the
+Connecting MCP exposes ten backend tools; it does not automatically install the
 repository's skill files into a host. Use the host's supported skill installation
 mechanism, or follow the linked skill instructions and invoke the tools directly.
 
@@ -119,10 +119,23 @@ inside `GK_VECTOR_ROOT` or the configured output folder before calling
 `prepare_panels`; chat attachments are not automatically local files. Tool
 responses currently return paths and reports, not downloadable file attachments.
 
-After setup, use `prepare_panels`, inspect the mask preview, approve the actual
-revision, and call `vectorize_panels`. Use candidate mode when testing a draft.
+After setup, use `prepare_panels`. Review its `color_review.colors`, panel masks,
+palette-matched preview and swatch page with the user. Once the user approves
+both artwork and colors, call `approve_panels` with `colors_approved=true`, then
+`vectorize_panels`. Use candidate mode when testing a draft.
 SVG/TIFF files and comparison previews are written to the configured output.
+Each export includes a TXT listing the palette colors defined in the SVG. Use
+`pantonic_status` to inspect the catalog and `update_pantonic` after changing the
+source chart; see [the palette guide](palette.md).
 Use `export_native_cdr` only on a Windows machine with licensed CorelDRAW.
+
+For app updates, ask **"Please update gk-vector tool."** The assistant calls
+`update_gk_vector`: pull `main`, then request a restart.
+Quit and reopen Claude Desktop, or stop and restart the tunnel client for
+ChatGPT. This reloads updated code and tools; the updater does not restart the
+client automatically. Startup installs dependencies before loading image libraries,
+so allow that first reconnect to finish. Local code changes block the update rather than being
+overwritten. This app update is separate from refreshing the Pantonic chart.
 
 ## Troubleshooting
 

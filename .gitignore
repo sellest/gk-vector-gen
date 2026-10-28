@@ -5,3 +5,7 @@ __pycache__/
 output/
 gk-vector.local.json
 gk-vector.local.tmp
+palettes/.ocr/
+palettes/*.candidate.json
+palettes/*.review.json
+.gk-vector-update.json

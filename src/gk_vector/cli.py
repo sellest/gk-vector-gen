@@ -1,11 +1,14 @@
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 from .pipeline import approve, load_job, prepare, vectorize
 from .corel import export_cdr
 from . import config
+from .palette import update_palette
+from .update import update_tool
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -13,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser(description="Panel reconstruction handoff and vector export")
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser('update',help='Pull origin/main; restart the app to finish installation')
+    p = sub.add_parser("update-palette", help="Rebuild pantonic from printed RGB labels; preserve active palette if OCR is unresolved")
+    p.add_argument("--source", default="docs/pantonic.tif")
+    p.add_argument("--destination", default="palettes/pantonic.json")
+    p.add_argument("--corrections-file", help="JSON with source_sha256 and entries keyed by r01c01 identifiers")
+    p.add_argument("--force", action="store_true", help="Repeat OCR even when chart and corrections are unchanged")
     p = sub.add_parser("setup", help="Initial setup or adjustment of saved defaults")
     p.add_argument("--show", action="store_true")
     p.add_argument("--defaults", action="store_true", help="Initialize with defaults; preserve existing settings")
@@ -29,6 +38,7 @@ def main():
     p = sub.add_parser("approve")
     p.add_argument("job")
     p.add_argument("--note", required=True, help="Actual client approval text")
+    p.add_argument("--colors-approved", action="store_true", help="Client explicitly approved the proposed color selection as well as artwork")
     for name in ("vectorize", "export-cdr"):
         p = sub.add_parser(name)
         p.add_argument("job")
@@ -38,7 +48,13 @@ def main():
     sub.add_parser("serve")
     args = parser.parse_args()
     try:
-        if args.command == "setup":
+        if args.command == 'update':
+            result=update_tool(ROOT)
+        elif args.command == "update-palette":
+            corrections = json.loads(Path(args.corrections_file).read_text(encoding="utf-8")) if args.corrections_file else None
+            result = update_palette(ROOT / args.source, ROOT / args.destination, corrections, args.force,
+                                    progress=lambda row,total: print(f"OCR row {row}/{total}",file=sys.stderr,flush=True))
+        elif args.command == "setup":
             if args.show:
                 try:
                     result = {"configured": True, **config.describe(ROOT, config.read_config(ROOT))}
@@ -62,10 +78,10 @@ def main():
             identity = {"design":design, "revision":args.revision,
                         "export_names":config.export_names(preferences, design, args.revision),
                         "configuration":preferences}
-            result = prepare(args.image, folder, profile, overrides, args.mask, identity)
+            result = prepare(args.image, folder, profile, overrides, args.mask, identity, ROOT / preferences["palette_file"])
             result = {"job_folder":str(folder.resolve()), **result}
         elif args.command == "approve":
-            result = approve(args.job, args.note)
+            result = approve(args.job, args.note, args.colors_approved)
         elif args.command == "vectorize":
             result = vectorize(args.job, args.candidate)
         elif args.command == "export-cdr":

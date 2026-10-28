@@ -17,8 +17,8 @@ The configured output folder is created when the first job is prepared; it can
 be outside the application folder. Generated artwork and local settings are
 excluded from Git.
 
-Each conversion produces SVG, TIFF, PNG previews, a side-by-side comparison,
-an amplified difference image and a JSON report. Inspect these in a browser or
+Each conversion produces SVG, TIFF, a color TXT, PNG previews, a side-by-side
+comparison, an amplified difference image and a JSON report. Inspect these in a browser or
 image viewer before accepting a result. Tracing approximates small motifs,
 gradients and logo edges. Artwork silhouettes are not validated sewing patterns.
 
@@ -47,10 +47,16 @@ and surrounded by a light neutral background or transparency. It produces
 segmentation fails, supply a same-size white-on-black mask with `--mask`.
 The default profile is [profiles/201-107.json](profiles/201-107.json).
 
-After actual client approval of the artwork and masks:
+Preparation also returns `color_review.colors` with the proposed chart IDs,
+names, RGB, HEX, panel roles and approximate pixel shares. Before any tracing,
+review `palette-matched.png`, `color-comparison.jpg`, `colors-review.html` and
+`color-selection.txt`. Approve both the panel design and this color selection.
+The matched image, selection, masks and settings are frozen for the revision.
+
+After actual client approval of the artwork, masks and selected colors:
 
 ```powershell
-.\.venv\Scripts\python.exe run.py approve output/201-107/r01 --note "Client's approval message"
+.\.venv\Scripts\python.exe run.py approve output/201-107/r01 --note "Client approved artwork and colors" --colors-approved
 .\.venv\Scripts\python.exe run.py vectorize output/201-107/r01
 .\.venv\Scripts\python.exe run.py export-cdr output/201-107/r01
 ```
@@ -75,6 +81,7 @@ For example:
   "output_folder": "D:/Artwork/Leotards",
   "job_template": "{design}/{revision}",
   "filename_template": "{design}-{revision}.{ext}",
+  "palette_file": "palettes/pantonic.json",
   "svg": {
     "units": "mm", "version": "1.1", "precision": 3,
     "trace_mode": "spline", "background": "solid",
@@ -118,6 +125,21 @@ Tracing controls: `color_precision` (1–8), `gradient_step`, `filter_speckle`,
 `trace_max_dimension`, and `preserve_white_details`. Native CDR target version
 is configured by `cdr_version`, defaulting to 16 (X6), subject to native testing.
 
+## Palette colors
+
+New jobs snapshot [the reusable Pantonic catalog](palettes/pantonic.json).
+The pipeline matches the artwork and final SVG paints to its printed RGB values,
+interpreted as sRGB. Proposed colors are calculated during preparation; production
+requires explicit color approval. The vectorizer reuses the matched image and
+is restricted to that selected subset, so it cannot introduce other catalog
+colors after approval. Every export includes `<svg-stem>_colors.txt`, listing the
+palette names, RGB and HEX values used by the vector. TIFF is rendered from that
+vector and tagged sRGB. Existing jobs retain their captured palette version.
+
+Refresh the catalog from `docs/pantonic.tif` using `run.py update-palette` or MCP
+`update_pantonic`. Unresolved RGB labels leave the active catalog unchanged.
+See [palette updates, OCR review and corrections](docs/palette.md).
+
 ## Native CDR limitation
 
 Native CDR export requires Windows with registered CorelDRAW automation.
@@ -129,6 +151,26 @@ CorelDRAW and remains unverified against a real installation. A successful save
 is reported as needing visual verification, not as proven render parity. The
 TIFF is rendered by resvg; verify clipping, gradients and colors in CorelDRAW.
 
+## Update the local app
+
+Ask the connected assistant: **"Please update gk-vector tool."** It calls
+`update_gk_vector`, pulls `origin/main`, and asks you to restart the app. Startup
+then installs the locked dependencies and project into the current Python
+environment before loading the image libraries. The CLI equivalent is:
+
+```powershell
+.\.venv\Scripts\python.exe run.py update
+```
+
+macOS: `./.venv/bin/python run.py update`. Updates require a clean tracked
+checkout on `main`, with `origin` pointing to this project's GitHub repository.
+Pulls are fast-forward only. Settings and artwork remain in place. The updater
+reports failures without discarding changes or resetting the checkout. After a
+successful pull, restart the host/MCP connection before doing more artwork.
+With a tunnel, restart its client process to relaunch the local server.
+The first startup finishes dependency installation; wait for it to reconnect.
+If installation fails, the pending update is retained and retried on startup.
+
 ## MCP
 
 Start the stdio server with:
@@ -138,7 +180,8 @@ Start the stdio server with:
 ```
 
 Tools: `workspace_settings`, `configure_workspace`, `prepare_panels`,
-`approve_panels`, `vectorize_panels`, `export_native_cdr`, `panel_job_status`.
+`approve_panels`, `vectorize_panels`, `export_native_cdr`, `panel_job_status`,
+`update_pantonic`, `pantonic_status`, `update_gk_vector`.
 Paths are restricted to `GK_VECTOR_ROOT` and the configured output folder,
 where `GK_VECTOR_ROOT` defaults to the server's working directory. Configure that
 environment variable when the host launches the server elsewhere.

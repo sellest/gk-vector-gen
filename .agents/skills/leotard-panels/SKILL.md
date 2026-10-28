@@ -46,10 +46,22 @@ Left=front and right=back. Panel edges and white trim must survive segmentation.
 Use the returned `job_folder` for subsequent commands. Examples below assume
 the default configured folder and job template, producing `output/201-107/r01`.
 
-After actual client approval of this revision, record their message and convert:
+Preparation also calculates the proposed palette colors without invoking the
+vectorizer. Present `color_review.colors` in the response: chart ID, name, RGB,
+HEX, and approximate panel share. Include the palette-matched preview and
+`colors-review.html` swatches so the client sees the effect of mapping colors.
+For long lists, show the dominant colors in chat and link the complete list;
+do not hide the existence of minor colors. Explain background-only roles.
+
+Inspect `palette-matched.png`, `color-comparison.jpg`, `colors-review.html`, and
+`color-selection.txt` with the client. Obtain approval of BOTH the artwork and
+the entire color selection. Approval of the original generated image alone is
+insufficient. If either changes, prepare a new revision and review again.
+
+After actual combined approval of this revision, record their message and convert:
 
 ```powershell
-.\.venv\Scripts\python.exe run.py approve output/201-107/r01 --note "<client approval>"
+.\.venv\Scripts\python.exe run.py approve output/201-107/r01 --note "<client approval of artwork and colors>" --colors-approved
 .\.venv\Scripts\python.exe run.py vectorize output/201-107/r01
 ```
 
@@ -58,11 +70,34 @@ For an explicitly requested pipeline test before design approval, use
 to get a test to run. Changed source hashes require a new revision.
 
 Compare `comparison.jpg`, `vector-preview.png`, and `difference-x5.png`. Read
-`report.json`; use its `artifacts` map for configured SVG/TIFF/CDR filenames.
+`report.json`; use its `artifacts` map for SVG/TIFF/CDR and color TXT filenames.
 Inspect logos, thin lines, colors, mask edges, and missing details.
 Vector output must contain actual paths with zero embedded raster images.
 RGB error is diagnostic, not proof of design fidelity. Tracing can create many
 objects and approximate gradients. Show material changes for review.
+
+## Palette compliance
+
+Each prepared job snapshots the configured `palette_file` (default
+`palettes/pantonic.json`). The pipeline uses printed RGB labels as sRGB values,
+calculates the color selection during preparation, and constrains final SVG
+paints to that reviewed subset, including white details and backgrounds.
+Vectorization reuses the saved matched image and may use fewer selected colors,
+but cannot add other catalog colors. MCP `approve_panels` requires
+`colors_approved=true`; set it only after the client approves the color selection.
+The TIFF is rendered from the constrained SVG.
+Do not manually restore off-palette white, colors, or gradient stops afterward.
+
+Deliver `artifacts.colors` alongside the vector: it lists the actual SVG paint
+colors with chart IDs, names, RGB, HEX and palette version. Raster antialiasing
+colors are not additional palette entries. A palette change can alter the look;
+review the comparison as part of the existing artwork/vector review.
+
+Use MCP `pantonic_status` to inspect the catalog. If the chart is replaced, use
+`update_pantonic` or `run.py update-palette`, following
+[the palette guide](../../../docs/palette.md). Unresolved RGB readings must not
+replace the active catalog. Catalog updates affect new revisions only; source
+hashes protect existing snapshots. Reprepare jobs created before palette support.
 
 ## Settings and native CDR
 
